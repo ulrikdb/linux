@@ -402,6 +402,54 @@ static void elantech_report_absolute_v2(struct psmouse *psmouse)
 	input_sync(dev);
 }
 
+static void elantech_report_trackpoint(struct psmouse *psmouse,
+				       int packet_type)
+{
+	/* byte 0:  0   0 ~sx ~sy   0   M   R   L */
+	/* byte 1: sx   0   0   0   0   0   0   0 */
+	/* byte 2: sy   0   0   0   0   0   0   0 */
+	/* byte 3:  0   0  sy  sx   0   1   1   0 */
+	/* byte 4: x7  x6  x5  x4  x3  x2  x1  x0 */
+	/* byte 5: y7  y6  y5  y4  y3  y2  y1  y0 */
+
+	/*
+	 * x and y are written in two's complement spread
+	 * over 9 bits with sx/sy the relative top bit and
+	 * x7..x0 and y7..y0 the lower bits.
+	 * The sign of y is opposite to what the input driver
+	 * expects for a relative movement
+	 */
+
+	struct elantech_data *etd = psmouse->private;
+	struct input_dev *dev2 = etd->dev2;
+	unsigned char *packet = psmouse->packet;
+	int x, y;
+	input_report_key(dev2, BTN_LEFT, packet[0] & 0x01);
+	input_report_key(dev2, BTN_RIGHT, packet[0] & 0x02);
+	input_report_key(dev2, BTN_MIDDLE, packet[0] & 0x04);
+	x = (s32) ((u32) ((packet[1] & 0x80) ? 0UL : 0xFFFFFF00UL) | (u32)
+		   packet[4]);
+	y = -(s32) ((u32) ((packet[2] & 0x80) ? 0UL : 0xFFFFFF00UL) | (u32)
+		    packet[5]);
+	input_report_rel(dev2, REL_X, x);
+	input_report_rel(dev2, REL_Y, y);
+	switch ((((u32) packet[0] & 0xF8) << 24) | ((u32) packet[1] << 16)
+		| (u32) packet[2] << 8 | (u32) packet[3]) {
+	case 0x00808036UL:
+	case 0x10008026UL:
+	case 0x20800016UL:
+	case 0x30000006UL:
+		break;
+	default:
+		/* Dump unexpected packet sequences if debug=1 (default) */
+		if (etd->debug == 1)
+			elantech_packet_dump(psmouse);
+		break;
+	}
+
+	input_sync(dev2);
+}
+
 /*
  * Interpret complete data packets and report absolute mode input events for
  * hardware version 3. (12 byte packets for two fingers)
@@ -700,7 +748,10 @@ static int elantech_packet_check_v3(struct psmouse *psmouse)
 
 		if ((packet[0] & 0x0c) == 0x0c && (packet[3] & 0xce) == 0x0c)
 			return PACKET_V3_TAIL;
+		if ((packet[3]&0x0f) == 0x06)
+			return PACKET_TRACKPOINT;
 	}
+
 
 	return PACKET_UNKNOWN;
 }
@@ -783,7 +834,10 @@ static psmouse_ret_t elantech_process_byte(struct psmouse *psmouse)
 		if (packet_type == PACKET_UNKNOWN)
 			return PSMOUSE_BAD_DATA;
 
-		elantech_report_absolute_v3(psmouse, packet_type);
+		if (packet_type == PACKET_TRACKPOINT)
+			elantech_report_trackpoint(psmouse, packet_type);
+		else
+			elantech_report_absolute_v3(psmouse, packet_type);
 		break;
 
 	case 4:
@@ -1400,10 +1454,15 @@ int elantech_init(struct psmouse *psmouse)
 	struct elantech_data *etd;
 	int i, error;
 	unsigned char param[3];
+	struct input_dev *dev2;
 
 	psmouse->private = etd = kzalloc(sizeof(struct elantech_data), GFP_KERNEL);
 	if (!etd)
 		return -ENOMEM;
+	dev2 = input_allocate_device();
+	if (!dev2)
+		goto init_fail;
+	etd->dev2 = dev2;
 
 	psmouse_reset(psmouse);
 
@@ -1463,9 +1522,26 @@ int elantech_init(struct psmouse *psmouse)
 	psmouse->reconnect = elantech_reconnect;
 	psmouse->pktsize = etd->hw_version > 1 ? 6 : 4;
 
+	snprintf(etd->phys, sizeof(etd->phys), "%s/input1",
+		psmouse->ps2dev.serio->phys);
+	dev2->phys = etd->phys;
+	dev2->name = "TPPS/2 IBM TrackPoint";
+	dev2->id.bustype = BUS_I8042;
+	dev2->id.vendor  = 0x0002;
+	dev2->id.product = PSMOUSE_ELANTECH;
+	dev2->id.version = 0x0000;
+	dev2->dev.parent = &psmouse->ps2dev.serio->dev;
+	dev2->evbit[0] = BIT_MASK(EV_KEY) | BIT_MASK(EV_REL);
+	dev2->relbit[BIT_WORD(REL_X)] = BIT_MASK(REL_X) | BIT_MASK(REL_Y);
+	dev2->keybit[BIT_WORD(BTN_LEFT)] =
+		BIT_MASK(BTN_LEFT) | BIT_MASK(BTN_MIDDLE) | BIT_MASK(BTN_RIGHT);
+
+	if (input_register_device(etd->dev2))
+		goto init_fail;
 	return 0;
 
  init_fail:
+	input_free_device(dev2);
 	kfree(etd);
 	return -1;
 }
