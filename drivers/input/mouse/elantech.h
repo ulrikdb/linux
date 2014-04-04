@@ -114,6 +114,7 @@ struct finger_pos {
 };
 
 struct elantech_data {
+	unsigned char dump_nr_packets;
 	unsigned char reg_07;
 	unsigned char reg_10;
 	unsigned char reg_11;

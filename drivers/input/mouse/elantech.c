@@ -757,9 +757,16 @@ static psmouse_ret_t elantech_process_byte(struct psmouse *psmouse)
 
 	switch (etd->hw_version) {
 	case 1:
-		if (etd->paritycheck && !elantech_packet_check_v1(psmouse))
+		if (etd->paritycheck && !elantech_packet_check_v1(psmouse)) {
+			if((etd->debug==1) && (etd->dump_nr_packets > 0)) {
+					psmouse_printk(KERN_DEBUG, psmouse, "Ignoring this bad packet:");
+					elantech_packet_dump(psmouse);
+					if(etd->dump_nr_packets != 255) 
+						etd->dump_nr_packets--;
+					return PSMOUSE_FULL_PACKET;
+			}
 			return PSMOUSE_BAD_DATA;
-
+		}
 		elantech_report_absolute_v1(psmouse);
 		break;
 
@@ -768,8 +775,16 @@ static psmouse_ret_t elantech_process_byte(struct psmouse *psmouse)
 		if (elantech_debounce_check_v2(psmouse))
 			return PSMOUSE_FULL_PACKET;
 
-		if (etd->paritycheck && !elantech_packet_check_v2(psmouse))
+		if (etd->paritycheck && !elantech_packet_check_v2(psmouse)) {
+			if((etd->debug==1) && (etd->dump_nr_packets > 0)) {
+					psmouse_printk(KERN_DEBUG, psmouse, "Ignoring this bad packet:");
+					elantech_packet_dump(psmouse);
+					if(etd->dump_nr_packets != 255) 
+						etd->dump_nr_packets--;
+					return PSMOUSE_FULL_PACKET;
+			}
 			return PSMOUSE_BAD_DATA;
+		}
 
 		elantech_report_absolute_v2(psmouse);
 		break;
@@ -780,17 +795,32 @@ static psmouse_ret_t elantech_process_byte(struct psmouse *psmouse)
 		if (packet_type == PACKET_DEBOUNCE)
 			return PSMOUSE_FULL_PACKET;
 
-		if (packet_type == PACKET_UNKNOWN)
+		if (packet_type == PACKET_UNKNOWN) {
+			if((etd->debug==1) && (etd->dump_nr_packets > 0)) {
+					psmouse_printk(KERN_DEBUG, psmouse, "Ignoring this bad packet:");
+					elantech_packet_dump(psmouse);
+					if(etd->dump_nr_packets != 255) 
+						etd->dump_nr_packets--;
+					return PSMOUSE_FULL_PACKET;
+			}
 			return PSMOUSE_BAD_DATA;
+		}
 
 		elantech_report_absolute_v3(psmouse, packet_type);
 		break;
 
 	case 4:
 		packet_type = elantech_packet_check_v4(psmouse);
-		if (packet_type == PACKET_UNKNOWN)
+		if (packet_type == PACKET_UNKNOWN) {
+			if((etd->debug==1) && (etd->dump_nr_packets > 0)) {
+					psmouse_printk(KERN_DEBUG, psmouse, "Ignoring this bad packet:");
+					elantech_packet_dump(psmouse);
+					if(etd->dump_nr_packets != 255) 
+						etd->dump_nr_packets--;
+					return PSMOUSE_FULL_PACKET;
+			}
 			return PSMOUSE_BAD_DATA;
-
+		}
 		elantech_report_absolute_v4(psmouse, packet_type);
 		break;
 	}
@@ -1190,6 +1220,7 @@ static ssize_t elantech_set_int_attr(struct psmouse *psmouse,
 			    elantech_show_int_attr,			\
 			    elantech_set_int_attr)
 
+ELANTECH_INT_ATTR(dump_nr_packets, 0);
 ELANTECH_INT_ATTR(reg_07, 0x07);
 ELANTECH_INT_ATTR(reg_10, 0x10);
 ELANTECH_INT_ATTR(reg_11, 0x11);
@@ -1204,6 +1235,7 @@ ELANTECH_INT_ATTR(debug, 0);
 ELANTECH_INT_ATTR(paritycheck, 0);
 
 static struct attribute *elantech_attrs[] = {
+	&psmouse_attr_dump_nr_packets.dattr.attr,
 	&psmouse_attr_reg_07.dattr.attr,
 	&psmouse_attr_reg_10.dattr.attr,
 	&psmouse_attr_reg_11.dattr.attr,
