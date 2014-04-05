@@ -1235,6 +1235,52 @@ static int elantech_set_input_params(struct psmouse *psmouse)
 	return 0;
 }
 
+/*
+ * Some hw_version 3 models go into error state when we try to set
+ * bit 3 and/or bit 1 of r10.
+ */
+static const struct dmi_system_id no_hw_res_dmi_table[] = {
+#if defined(CONFIG_DMI) && defined(CONFIG_X86)
+	{
+		/* Gigabyte U2442 */
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "GIGABYTE"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "U2442"),
+		},
+	},
+#endif
+	{ }
+};
+
+/*
+ * Some hw_version 4 models do not work with crc_disabled
+ */
+static const struct dmi_system_id elantech_dmi_crc_enabled[] = {
+#if defined(CONFIG_DMI) && defined(CONFIG_X86)
+	{
+		/* Fujitsu H730 does not work with crc_enabled == 0 */
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "FUJITSU"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "CELSIUS H730"),
+		},
+	},
+#endif
+	{ }
+};
+
+/*
+ * Autodetect crc_enabled and verify override DMI table
+ */
+static unsigned char elantech_detect_crc_enabled(struct elantech_data *etd)
+{
+
+#if defined(CONFIG_DMI) && defined(CONFIG_X86)
+	if (dmi_check_system(elantech_dmi_crc_enabled))
+		return 1;
+#endif /* CONFIG_X86 */
+
+	return ((etd->fw_version & 0x4000) == 0x4000);
+}
 struct elantech_attr_data {
 	size_t		field_offset;
 	unsigned char	reg;
@@ -1444,23 +1490,6 @@ static int elantech_reconnect(struct psmouse *psmouse)
 }
 
 /*
- * Some hw_version 3 models go into error state when we try to set
- * bit 3 and/or bit 1 of r10.
- */
-static const struct dmi_system_id no_hw_res_dmi_table[] = {
-#if defined(CONFIG_DMI) && defined(CONFIG_X86)
-	{
-		/* Gigabyte U2442 */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "GIGABYTE"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "U2442"),
-		},
-	},
-#endif
-	{ }
-};
-
-/*
  * determine hardware version and set some properties according to it.
  */
 static int elantech_set_properties(struct elantech_data *etd)
@@ -1518,7 +1547,7 @@ static int elantech_set_properties(struct elantech_data *etd)
 	 * The signatures of v3 and v4 packets change depending on the
 	 * value of this hardware flag.
 	 */
-	etd->crc_enabled = ((etd->fw_version & 0x4000) == 0x4000);
+	etd->crc_enabled = elantech_detect_crc_enabled(etd);
 
 	/* Enable real hardware resolution on hw_version 3 ? */
 	etd->set_hw_resolution = !dmi_check_system(no_hw_res_dmi_table);
