@@ -1617,6 +1617,7 @@ int elantech_init(struct psmouse *psmouse)
 	sysfs_remove_group(&psmouse->ps2dev.serio->dev.kobj,
 			   &elantech_attr_group);
  init_fail:
+	psmouse_reset(psmouse);
 	kfree(etd);
 	return error;
 }
