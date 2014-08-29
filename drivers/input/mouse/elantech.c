@@ -1305,6 +1305,28 @@ static ssize_t elantech_show_int_attr(struct psmouse *psmouse, void *data,
 	return sprintf(buf, "0x%02x\n", (attr->reg && rc) ? -1 : *reg);
 }
 
+
+/*
+ * Write a register value for crc_enabled.
+ * If "2" is given, perform detect again.
+ */
+static ssize_t elantech_set_int_attr_crc_enabled(struct psmouse *psmouse,
+				     void *data, const char *buf, size_t count)
+{
+	struct elantech_data *etd = psmouse->private;
+	unsigned char value;
+	int err;
+
+	err = kstrtou8(buf, 16, &value);
+	if (err)
+		return err;
+
+	etd->crc_enabled = (value == 2) ? elantech_detect_crc_enabled(etd) :
+		value;
+
+	return count;
+}
+
 /*
  * Write a register value by writing a sysfs entry
  */
@@ -1360,6 +1382,19 @@ ELANTECH_INT_ATTR(reg_26, 0x26);
 ELANTECH_INT_ATTR(debug, 0);
 ELANTECH_INT_ATTR(paritycheck, 0);
 
+#define ELANTECH_INT_ATTR_SETFUNCTION(_name, _register, _setfunction)	\
+	static struct elantech_attr_data elantech_attr_##_name = {	\
+		.field_offset = offsetof(struct elantech_data, _name),	\
+		.reg = _register,					\
+	};								\
+	PSMOUSE_DEFINE_ATTR(_name, S_IWUSR | S_IRUGO,			\
+			    &elantech_attr_##_name,			\
+			    elantech_show_int_attr,			\
+			    _setfunction)
+
+ELANTECH_INT_ATTR_SETFUNCTION(crc_enabled, 0,
+	elantech_set_int_attr_crc_enabled);
+
 static struct attribute *elantech_attrs[] = {
 	&psmouse_attr_reg_07.dattr.attr,
 	&psmouse_attr_reg_10.dattr.attr,
@@ -1373,6 +1408,7 @@ static struct attribute *elantech_attrs[] = {
 	&psmouse_attr_reg_26.dattr.attr,
 	&psmouse_attr_debug.dattr.attr,
 	&psmouse_attr_paritycheck.dattr.attr,
+	&psmouse_attr_crc_enabled.dattr.attr,
 	NULL
 };
 
