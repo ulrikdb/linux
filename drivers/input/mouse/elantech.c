@@ -1037,11 +1037,10 @@ static int elantech_set_range(struct psmouse *psmouse,
 			fixed_dpi = param[1] & 0x10;
 
 			if (((etd->fw_version >> 16) == 0x14) && fixed_dpi) {
-				if (etd->send_cmd(psmouse, ETP_SAMPLE_QUERY, param))
-					return -1;
-
-				*x_max = (etd->capabilities[1] - i) * param[1] / 2;
-				*y_max = (etd->capabilities[2] - i) * param[2] / 2;
+				*x_max = (etd->capabilities[1] - i) *
+					etd->samples[1] / 2;
+				*y_max = (etd->capabilities[2] - i) *
+					etd->samples[2] / 2;
 			} else if (etd->fw_version == 0x040216) {
 				*x_max = 819;
 				*y_max = 405;
